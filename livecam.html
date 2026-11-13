@@ -57,6 +57,24 @@
   .empty{color:var(--muted);font-size:14px;padding:30px 10px;text-align:center}
   .log{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace;margin-top:10px;
     max-height:90px;overflow:auto;white-space:pre-wrap;line-height:1.5;opacity:.8}
+
+  /* ---- Cat Cam full-screen "active" screen (shown on the broadcasting device) ---- */
+  .catcam{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(1200px 800px at 50% 30%, #1b2330 0%, #0b0d12 70%);padding:24px;text-align:center}
+  .catcam.show{display:flex}
+  .catcam .art{width:min(42vw,220px);height:auto;margin-bottom:18px;filter:drop-shadow(0 8px 30px rgba(0,0,0,.5))}
+  .catcam h2{margin:0 0 6px;font-size:22px;font-weight:700}
+  .catcam .rec{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:800;letter-spacing:.6px;
+    color:#fff;background:rgba(255,77,79,.95);padding:8px 16px;border-radius:999px;margin:10px 0 4px}
+  .catcam .rec .pulse{width:10px;height:10px;border-radius:50%;background:#fff;animation:pulse 1.2s infinite}
+  .catcam .sub{color:var(--muted);font-size:13px;max-width:340px;line-height:1.6;margin:10px 0 22px}
+  .catcam .selfprev{width:min(60vw,220px);aspect-ratio:4/3;border-radius:14px;overflow:hidden;border:1px solid var(--line);
+    background:#000;margin-bottom:18px;display:none}
+  .catcam .selfprev.show{display:block}
+  .catcam .selfprev video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .catcam .ccbtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .catcam.dim{background:#000}
+  .catcam.dim .art{opacity:.25}
 </style>
 </head>
 <body>
@@ -87,6 +105,30 @@
   </div>
 
   <div class="log" id="log"></div>
+</div>
+
+<!-- Cat Cam active screen: shown on the device whose camera is broadcasting -->
+<div class="catcam" id="catcam">
+  <svg class="art" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6b7cff"/><stop offset="1" stop-color="#4f8cff"/></linearGradient></defs>
+    <path fill="url(#g)" d="M30 20 L46 40 Q60 34 74 40 L90 20 L92 54 Q104 66 104 82 Q104 108 60 108 Q16 108 16 82 Q16 66 28 54 Z"/>
+    <circle cx="45" cy="70" r="6" fill="#0b0d12"/><circle cx="75" cy="70" r="6" fill="#0b0d12"/>
+    <circle cx="47" cy="68" r="2" fill="#fff"/><circle cx="77" cy="68" r="2" fill="#fff"/>
+    <path d="M60 80 l-5 5 h10 z" fill="#ff9aa2"/>
+    <path d="M60 85 q-8 6 -16 2 M60 85 q8 6 16 2" stroke="#0b0d12" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <g stroke="#cdd6ea" stroke-width="1.6" stroke-linecap="round">
+      <path d="M30 74 h-18 M30 80 h-20 M30 86 h-18 M90 74 h18 M90 80 h20 M90 86 h18"/></g>
+  </svg>
+  <h2>Cat Cam is live 🐾</h2>
+  <div class="rec"><span class="pulse"></span>ക്യാമറയും മൈക്കും ഓണാണ്</div>
+  <div class="sub" id="ccSub">This phone is streaming to your room. Anyone with the room link can see and hear it right now.</div>
+  <div class="selfprev" id="ccPrev"><video id="ccPrevVid" autoplay muted playsinline></video></div>
+  <div class="ccbtns">
+    <button id="ccPrevBtn">Show live preview</button>
+    <button id="ccDimBtn">Dim screen</button>
+    <button class="danger" id="ccStopBtn">Stop camera</button>
+  </div>
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -187,6 +229,10 @@
     $("camBtn").textContent="Turn my camera off"; $("camBtn").classList.remove("primary"); $("camBtn").classList.add("danger");
     $("switchBtn").disabled=false; $("muteBtn").disabled=false; $("muteBtn").textContent="Mute mic";
     refreshEmpty();
+    // show the Cat Cam "active" screen on this (broadcasting) device
+    $("ccPrevVid").srcObject = localStream;
+    $("ccSub").textContent = "This phone is streaming to room “" + room + "”. Anyone with the room link can see and hear it right now.";
+    $("catcam").classList.add("show");
     // call everyone I'm connected to
     Object.keys(dataConns).forEach(placeCall);
     broadcast({type:"camon"});
@@ -199,10 +245,24 @@
     var st=remoteTiles["__self__"]; if(st){ st.video.srcObject=null; st.badge.classList.remove("show"); st.tile.remove(); delete remoteTiles["__self__"]; }
     $("camBtn").textContent="Turn my camera on"; $("camBtn").classList.add("primary"); $("camBtn").classList.remove("danger");
     $("switchBtn").disabled=true; $("muteBtn").disabled=true;
+    $("catcam").classList.remove("show","dim");
+    $("ccPrev").classList.remove("show"); $("ccPrevBtn").textContent="Show live preview";
+    $("ccPrevVid").srcObject=null;
     broadcast({type:"camoff"});
     refreshEmpty();
     log("camera off");
   }
+
+  // Cat Cam screen buttons
+  $("ccStopBtn").addEventListener("click", stopCamera);
+  $("ccPrevBtn").addEventListener("click", function(){
+    var on=$("ccPrev").classList.toggle("show");
+    $("ccPrevBtn").textContent = on ? "Hide live preview" : "Show live preview";
+  });
+  $("ccDimBtn").addEventListener("click", function(){
+    var d=$("catcam").classList.toggle("dim");
+    $("ccDimBtn").textContent = d ? "Brighten screen" : "Dim screen";
+  });
 
   $("camBtn").addEventListener("click", function(){ localStream ? stopCamera() : startCamera(); });
 
